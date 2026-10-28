@@ -1,0 +1,336 @@
+import codes from "codes"
+import KEYS from "keys"
+let clear() do
+    print("\27[2J\27[H")
+end
+
+let moveCursor(int x, int y) do
+    print("\27[" .. y .. ";" .. x .. "H")
+end
+
+let enterAltScreen() do
+    print("\27[?1049h\27[?25l")
+end
+
+let exitAltScreen() do
+    print("\27[?25h\27[?1049l")
+end
+
+let hide_cursor() do
+    print("\27[?25l")
+end
+
+let show_cursor() do
+    print("\27[?25h")
+end
+
+let readKey() do
+    return read_key()
+end
+
+let getScreenSize() do
+    let int height = exec_out("tput lines") + 0
+    let int width = exec_out("tput cols") + 0
+    return {height: height, width: width}
+end
+let clearLine(int x, int y, int width) do
+    moveCursor(x, y)
+    let string spaces = ""
+    let int i = 0
+    while i < width do
+        spaces = spaces .. " "
+        i = i + 1
+    end
+
+    print(spaces)
+end
+let printAt(string text, int x, int y) do
+    moveCursor(x,y)
+    print(text)
+end
+let drawBox(int x, int y, int w, int h, string color) do
+    print("\27[" .. color .. "m")
+    # 1. Верхня межа
+    moveCursor(x, y)
+    print("┌")
+    for i in 1 .. w do
+        print("─")
+    end
+    print("┐")
+
+    # 2. Бічні стінки
+    for j in 1 .. h do
+        # Ліва стінка
+        moveCursor(x, y + j)
+        print("│")
+        # Права стінка (x + w + 1, бо додаємо ширину + лівий кут)
+        moveCursor(x + w + 1, y + j)
+        print("│")
+    end
+
+    # 3. Нижня межа
+    moveCursor(x, y + h + 1)
+    print("└")
+    for i in 1 .. w do
+        print("─")
+    end
+    print("┘")
+    print("\27[0m")
+end
+
+let drawMenu(int x, int y, int w, [string] options, string header, int selectedElement) do
+    # ОСЬ ВОНА, МАГІЯ! 
+    let int count = len(options)
+    let int box_h = count + 4
+    
+    drawBox(x, y, w, box_h, codes.textCodes.standard)
+
+    moveCursor(x + 2, y + 1)
+    print(codes.genText(header, codes.textCodes.bold))
+
+    let int current_y = y + 3
+    let int i = 0
+    for option in options do
+        moveCursor(x + 2, current_y)
+        
+        if i == selectedElement do
+            print(codes.genMultiCodeText(" " .. option .. " ", [codes.textCodes.white, codes.textCodes.blueBg]))
+        else
+            print(" " .. option .. " ")
+        end
+        
+        i = i + 1
+        current_y = current_y + 1
+    end
+end
+
+let drawInput(int x, int y, int w, string value, int cursor_pos, [any] border_styles = [codes.textCodes.standard])do 
+    drawBox(x, y, w, 1, border_styles[0])
+    # 1. Малюємо те, що вже введено
+    printAt(value, x + 1, y + 1)
+    
+    # 2. Малюємо курсор (інвертований пробіл)
+    moveCursor(x+1 + cursor_pos, y+1)
+    print(codes.genMultiCodeText(" ", [codes.textCodes.inverted]))
+end
+
+let handleInputKey(any input_obj, string key) do
+    # 1. ENTER - завершити ввід (сигнал для виходу з циклу)
+    if key == KEYS.KEY_ENTER do
+        return false
+    end
+
+    # 2. BACKSPACE - видалити символ
+    if key == "\127" or key == "\8" do
+        if input_obj.cursor_pos > 0 do
+            let string before = ""
+            if input_obj.cursor_pos > 1 do
+                before = substring(input_obj.value, 0, input_obj.cursor_pos - 2)
+            end
+            
+            let string after = ""
+            if input_obj.cursor_pos < len(input_obj.value) do
+                after = substring(input_obj.value, input_obj.cursor_pos, len(input_obj.value) - 1)
+            end
+            
+            input_obj.value = before .. after
+            input_obj.cursor_pos = input_obj.cursor_pos - 1
+        end
+        return true
+    end
+
+    # 3. СТРІЛКИ ВЛІВО/ВПРАВО
+    if key == KEYS.KEY_LEFT do
+        if input_obj.cursor_pos > 0 do
+            input_obj.cursor_pos = input_obj.cursor_pos - 1
+        end
+        return true
+    end
+    if key == KEYS.KEY_RIGHT do
+        if input_obj.cursor_pos < len(input_obj.value) do
+            input_obj.cursor_pos = input_obj.cursor_pos + 1
+        end
+        return true
+    end
+
+    # 4. ЗВИЧАЙНИЙ СИМВОЛ - вставити
+    if len(key) == 1 do
+        let string before = ""
+        if input_obj.cursor_pos > 0 do
+            before = substring(input_obj.value, 0, input_obj.cursor_pos - 1)
+        end
+        
+        let string after = ""
+        if input_obj.cursor_pos < len(input_obj.value) do
+            after = substring(input_obj.value, input_obj.cursor_pos, len(input_obj.value) - 1)
+        end
+        
+        input_obj.value = before .. key .. after
+        input_obj.cursor_pos = input_obj.cursor_pos + 1
+        return true
+    end
+
+    return true # Ігноруємо всі інші клавіші (F1, Up, Down тощо)
+end
+let drawLine(int x, int y, int l, bool vertical = true,string color = codes.textCodes.bold) do
+    moveCursor(x,y)
+    if vertical do
+        for i in 1..l do
+            moveCursor(x,y+i)
+            print(codes.genText("│", color))
+        end
+    else
+        for i in 1..l do
+            moveCursor(x+i, y)
+            print(codes.genText("─", color))
+        end
+    end
+end
+
+
+
+
+let drawTextArea(int x, int y, int w, int h, [string] lines, int cursor_x, int cursor_y, int scroll_y = 0) do
+    drawBox(x, y, w, h, codes.textCodes.standard)
+    let int i = 0
+    for line in lines do
+        if i >= scroll_y and i < scroll_y + h - 1 do
+            # ОБРІЗАЄМО текст, щоб він не залазив на рамку
+            let string visible_line = line
+            if utf8_len(line) > w - 2 do
+                visible_line = utf8_sub(line, 0, w - 3)
+            end
+            # Затираємо старий текст і малюємо новий
+            clearLine(x + 2, y + 1 + (i - scroll_y), w - 2)
+            printAt(visible_line, x + 2, y + 1 + (i - scroll_y))
+        end
+        i = i + 1
+    end
+    
+    # Курсор (тільки якщо він в межах видимої області)
+    if cursor_y >= scroll_y and cursor_y < scroll_y + h - 1 do
+        if cursor_x <= w - 2 do
+            moveCursor(x + 1 + cursor_x, y + 1 + (cursor_y - scroll_y))
+            print(codes.genMultiCodeText(" ", [codes.textCodes.inverted]))
+        end
+    end
+end
+
+let handleTextAreaKey(any buffer, string key) do
+    let int cx = buffer.cursor_x
+    let int cy = buffer.cursor_y
+    let string current_line = buffer.lines[cy]
+    let int line_len = utf8_len(current_line)
+
+    if key == KEYS.KEY_ENTER do
+        let string before = ""
+        if cx > 0 do before = utf8_sub(current_line, 0, cx - 1) end
+        let string after = ""
+        if cx < line_len do after = utf8_sub(current_line, cx, line_len - 1) end
+        
+        buffer.lines[cy] = before
+        insert_at(buffer.lines, cy + 1, after)
+        buffer.cursor_y = cy + 1
+        buffer.cursor_x = 0
+        return true
+    end
+    
+    if key == "\127" or key == "\8" do
+        if cx > 0 do
+            let string before = ""
+            if cx > 1 do before = utf8_sub(current_line, 0, cx - 2) end
+            let string after = ""
+            if cx < line_len do after = utf8_sub(current_line, cx, line_len - 1) end
+            buffer.lines[cy] = before .. after
+            buffer.cursor_x = cx - 1
+        else
+            if cy > 0 do
+                let int prev_len = utf8_len(buffer.lines[cy - 1])
+                buffer.lines[cy - 1] = buffer.lines[cy - 1] .. current_line
+                remove_at(buffer.lines, cy)
+                buffer.cursor_y = cy - 1
+                buffer.cursor_x = prev_len
+            end
+        end
+        return true
+    end
+    
+    if key == KEYS.KEY_UP do
+        if cy > 0 do
+            buffer.cursor_y = cy - 1
+            if buffer.cursor_x > utf8_len(buffer.lines[buffer.cursor_y]) do
+                buffer.cursor_x = utf8_len(buffer.lines[buffer.cursor_y])
+            end
+        end
+        return true
+    end
+    if key == KEYS.KEY_DOWN do
+        if cy < len(buffer.lines) - 1 do
+            buffer.cursor_y = cy + 1
+            if buffer.cursor_x > utf8_len(buffer.lines[buffer.cursor_y]) do
+                buffer.cursor_x = utf8_len(buffer.lines[buffer.cursor_y])
+            end
+        end
+        return true
+    end
+    if key == KEYS.KEY_LEFT do
+        if cx > 0 do buffer.cursor_x = cx - 1 end
+        return true
+    end
+    if key == KEYS.KEY_RIGHT do
+        if cx < line_len do buffer.cursor_x = cx + 1 end
+        return true
+    end
+
+    if key == "\9" do
+        let string before = ""
+        if cx > 0 do before = utf8_sub(current_line, 0, cx - 1) end
+        let string after = ""
+        if cx < line_len do after = utf8_sub(current_line, cx, line_len - 1) end
+        
+        buffer.lines[cy] = before .. "    " .. after
+        buffer.cursor_x = cx + 4
+        return true
+    end
+    
+    # Вставляємо звичайний символ (перевіряємо, що це не керуючий символ)
+        # Вставляємо звичайний символ (перевіряємо, що це не керуючий символ)
+    let int key_utf8_len = utf8_len(key)
+    
+    # ПРИБРАЛИ "key_utf8_len and", залишили тільки порівняння
+    if key_utf8_len == 1 and key != "\27" do
+        let string before = ""
+        if cx > 0 do before = utf8_sub(current_line, 0, cx - 1) end
+        
+        let string after = ""
+        if cx < line_len do after = utf8_sub(current_line, cx, line_len - 1) end
+        
+        buffer.lines[cy] = before .. key .. after
+        buffer.cursor_x = cx + 1
+        return true
+    end
+    return true
+end
+
+return {
+    clear: clear,
+    moveCursor: moveCursor,
+    enterAltScreen: enterAltScreen,
+    exitAltScreen: exitAltScreen,
+    hide_cursor: hide_cursor,
+    show_cursor: show_cursor,
+    readKey:readKey,
+    drawBox:drawBox,
+    drawMenu: drawMenu, 
+    getScreenSize: getScreenSize,
+    clearLine: clearLine,
+    drawInput: drawInput,
+    handleInputKey: handleInputKey,
+    drawLine:drawLine,
+    drawTextArea: drawTextArea,
+    handleTextAreaKey:handleTextAreaKey
+}
+
+# ┌ ─ ┐
+# │   │
+# └ ─ ┘

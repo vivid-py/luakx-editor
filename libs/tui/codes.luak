@@ -1,0 +1,44 @@
+let any textCodes = {
+    black: "30",
+    red: "31",
+    green: "32",
+    yellow: "33",
+    blue: "34",
+    purple: "35",
+    light_blue: "36",
+    white: "37",
+    standard: "39",
+
+    blackBg: "40",
+    redBg: "41",
+    greenBg: "42",
+    yellowBg: "43",
+    blueBg: "44",
+    purpleBg: "45",
+    light_blueBg: "46",
+    whiteBg: "47",
+    standardBg: "49",
+
+    resetEffects: "0",
+    bold: "1",
+    underlined: "4",
+    blinking: "5", 
+    inverted: "7"
+}
+
+let genText(string msg, string code) do
+    return "\27[" .. code .. "m" .. msg .. "\27[0m"
+end
+let genMultiCodeText(string msg, [string] codes) do
+    let string codepart = ""
+    for code in codes do
+        codepart = codepart .. code .. ";"
+    end
+    return "\27[" .. codepart .. "m" .. msg .. "\27[0m"
+end
+
+return {
+    textCodes: textCodes,
+    genText: genText, 
+    genMultiCodeText:genMultiCodeText,
+}
