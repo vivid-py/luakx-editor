@@ -1,5 +1,5 @@
-import codes from "codes"
-import KEYS from "keys"
+import codes from "libs/tui/codes"
+import KEYS from "libs/tui/keys"
 let clear() do
     print("\27[2J\27[H")
 end
@@ -78,8 +78,8 @@ let drawBox(int x, int y, int w, int h, string color) do
     print("\27[0m")
 end
 
-let drawMenu(int x, int y, int w, [string] options, string header, int selectedElement) do
-    # ОСЬ ВОНА, МАГІЯ! 
+let drawMenu(int x, int y, int w, [string] options, string header = "", int selectedElement) do
+    # some black shitty magic
     let int count = len(options)
     let int box_h = count + 4
     
@@ -106,21 +106,21 @@ end
 
 let drawInput(int x, int y, int w, string value, int cursor_pos, [any] border_styles = [codes.textCodes.standard])do 
     drawBox(x, y, w, 1, border_styles[0])
-    # 1. Малюємо те, що вже введено
+    # printin wat is printed
     printAt(value, x + 1, y + 1)
     
-    # 2. Малюємо курсор (інвертований пробіл)
+    # cursor
     moveCursor(x+1 + cursor_pos, y+1)
     print(codes.genMultiCodeText(" ", [codes.textCodes.inverted]))
 end
 
 let handleInputKey(any input_obj, string key) do
-    # 1. ENTER - завершити ввід (сигнал для виходу з циклу)
+    # 1. ENTER - end input
     if key == KEYS.KEY_ENTER do
         return false
     end
 
-    # 2. BACKSPACE - видалити символ
+    # 2. BACKSPACE - delet symbol
     if key == "\127" or key == "\8" do
         if input_obj.cursor_pos > 0 do
             let string before = ""
@@ -139,7 +139,7 @@ let handleInputKey(any input_obj, string key) do
         return true
     end
 
-    # 3. СТРІЛКИ ВЛІВО/ВПРАВО
+    # 3. arrows
     if key == KEYS.KEY_LEFT do
         if input_obj.cursor_pos > 0 do
             input_obj.cursor_pos = input_obj.cursor_pos - 1
@@ -153,7 +153,7 @@ let handleInputKey(any input_obj, string key) do
         return true
     end
 
-    # 4. ЗВИЧАЙНИЙ СИМВОЛ - вставити
+    # 4. paste
     if len(key) == 1 do
         let string before = ""
         if input_obj.cursor_pos > 0 do
@@ -210,7 +210,7 @@ let drawTextArea(int x, int y, int w, int h, [string] lines, int cursor_x, int c
     # Курсор (тільки якщо він в межах видимої області)
     if cursor_y >= scroll_y and cursor_y < scroll_y + h - 1 do
         if cursor_x <= w - 2 do
-            moveCursor(x + 1 + cursor_x, y + 1 + (cursor_y - scroll_y))
+            moveCursor(x + 2 + cursor_x, y + 1 + (cursor_y - scroll_y))
             print(codes.genMultiCodeText(" ", [codes.textCodes.inverted]))
         end
     end
@@ -312,6 +312,14 @@ let handleTextAreaKey(any buffer, string key) do
     return true
 end
 
+let drawLuakxLogo(int x, int y) do
+    let int a = 0
+    for line in codes.logo_luakx do
+        printAt(line, x, y + a) # Малюємо кожен рядок зі зсувом вниз
+        a = a + 1
+    end
+end
+
 return {
     clear: clear,
     moveCursor: moveCursor,
@@ -328,7 +336,9 @@ return {
     handleInputKey: handleInputKey,
     drawLine:drawLine,
     drawTextArea: drawTextArea,
-    handleTextAreaKey:handleTextAreaKey
+    handleTextAreaKey:handleTextAreaKey,
+    printAt:printAt,
+    drawLuakxLogo: drawLuakxLogo
 }
 
 # ┌ ─ ┐

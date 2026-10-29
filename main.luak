@@ -1,0 +1,101 @@
+import codes from "libs/tui/codes"
+import tui from "libs/tui/tui"
+import KEYS from "libs/tui/keys"
+import initEditor from "editor"
+let any screen = tui.getScreenSize()
+
+let any mainMenu = {x:(screen.width // 2)-5, y:(screen.height // 2), w: 20, options:["new file", "open", "quit"], selectedElement: 0}
+let any openFileTextModal = {x:(screen.width // 2)-5, y:(screen.height // 2) - 5,w:30, value:"", cursor_pos:0, border_styles: [codes.textCodes.green]}
+tui.enterAltScreen()
+tui.clear()
+
+let bool running = true
+let bool editing = false
+
+exec("stty -icanon min 1 time 0")
+exec("stty iutf8")
+
+while running do
+    tui.clear()
+    tui.drawLuakxLogo(screen.width // 3, screen.height // 6)
+    tui.drawMenu(mainMenu.x - 5, mainMenu.y - 5, mainMenu.w, mainMenu.options, mainMenu.header, mainMenu.selectedElement)
+    let string key = tui.readKey()
+    if key == KEYS.KEY_DOWN do 
+        mainMenu.selectedElement = mainMenu.selectedElement + 1
+        if mainMenu.selectedElement >= len(mainMenu.options) do
+            mainMenu.selectedElement = 0
+        end
+    end
+
+    if key == KEYS.KEY_UP do 
+        mainMenu.selectedElement = mainMenu.selectedElement - 1
+        if mainMenu.selectedElement < 0 do
+            mainMenu.selectedElement = len(mainMenu.options) - 1
+        end
+    end
+    
+    if key == KEYS.KEY_ENTER and mainMenu.options[mainMenu.selectedElement] == "new file" do
+        editing = true
+        while editing do
+            tui.clear()
+            tui.printAt(codes.genMultiCodeText("enter name for new file: ", [codes.textCodes.purple, codes.textCodes.bold]), openFileTextModal.x, openFileTextModal.y - 2)
+            tui.drawInput(openFileTextModal.x - 5, openFileTextModal.y, openFileTextModal.w, openFileTextModal.value, openFileTextModal.cursor_pos)
+            
+            let string edit_key = tui.readKey()
+            editing = tui.handleInputKey(openFileTextModal, edit_key)
+        end
+        
+        let string newFileName = openFileTextModal.value
+        openFileTextModal.value = "" # Очищаємо для наступного разу
+        openFileTextModal.cursor_pos = 0
+
+        if newFileName != "" do
+            # Створюємо порожній масив з одного пустого рядка
+            initEditor(newFileName, [""])
+            tui.clear()
+        end
+    end
+
+    if key == KEYS.KEY_ENTER and mainMenu.options[mainMenu.selectedElement] == "quit" do
+        running = false
+    end
+    if key == KEYS.KEY_ENTER and mainMenu.options[mainMenu.selectedElement] == "open" do
+        editing = true
+        while editing do
+            tui.clear()
+            tui.printAt(codes.genMultiCodeText("enter name of the file: ", [codes.textCodes.purple, codes.textCodes.bold]), openFileTextModal.x , openFileTextModal.y - 2)
+            tui.drawInput(openFileTextModal.x - 5, openFileTextModal.y, openFileTextModal.w, openFileTextModal.value, openFileTextModal.cursor_pos)
+            
+            let string edit_key = tui.readKey()
+            
+            # ОСЬ ВОНА, МАГІЯ. Один рядок замість 40!
+            editing = tui.handleInputKey(openFileTextModal, edit_key)
+
+            
+            
+        end
+        let string selectedFile = openFileTextModal.value
+        openFileTextModal.value = ""
+        openFileTextModal.cursor_pos = 0
+
+        if selectedFile != "" do
+            let string content = read_file(selectedFile)
+            if content != nil do
+                let [string] file_lines = split_lines(content)
+                initEditor(selectedFile, file_lines)
+                tui.clear() # Очищаємо екран після виходу з редактора
+            else
+                # Якщо файлу немає (наприклад, створюємо новий)
+                initEditor(selectedFile, [""])
+                tui.clear()
+            end
+        end
+    end
+end
+
+
+
+exec("stty sane")
+
+tui.clear()
+tui.exitAltScreen()

@@ -37,8 +37,18 @@ let genMultiCodeText(string msg, [string] codes) do
     return "\27[" .. codepart .. "m" .. msg .. "\27[0m"
 end
 
+let [string] logo_luakx = [
+    "██       ██   ██     ███      ██   ██    ██   ██",
+    "██       ██   ██    ██ ██     ██  ██      ██ ██ ",
+    "██       ██   ██   ██   ██    █████        ███  ",
+    "██       ██   ██   ███████    ████         ███  ",
+    "██       ██   ██   ██   ██    ██ ██       ██ ██ ",
+    "███████   █████    ██   ██    ██  ██     ██   ██"
+    ]
+
 return {
     textCodes: textCodes,
     genText: genText, 
     genMultiCodeText:genMultiCodeText,
+    logo_luakx: logo_luakx
 }

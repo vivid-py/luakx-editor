@@ -1,0 +1,78 @@
+#editor.luak
+import codes from "libs/tui/codes"
+import tui from "libs/tui/tui"
+import KEYS from "libs/tui/keys"
+let any screen = tui.getScreenSize()
+let any editorTextArea = {x:1, y:1, w:screen.width - 2, h:screen.height, lines:[""], cursor_x:0, cursor_y:0 }
+let any editorPanel = {x:0, y: screen.height,filename: "none", line: editorTextArea.cursor_y, column: editorTextArea.cursor_x}
+
+let drawEditorPanel(int x, int y, string filename, int line, int column, string mode)do
+    tui.moveCursor(x, y)
+    for i in 1 .. screen.width do
+        print(codes.genText(" ", codes.textCodes.greenBg))
+    end
+    tui.moveCursor(x, y)
+    let string shit = "mode: " .. mode .. "     " .. filename .. "     position(" .. line .. ", " .. column .. ")     "
+    print(codes.genMultiCodeText(shit, [codes.textCodes.greenBg, codes.textCodes.black]))
+end
+
+let initEditor(string filename, [string] lines) do
+
+    editorPanel.filename = filename
+    editorTextArea.lines = lines
+    
+    let string editor_mode = "standart"
+    let bool running = true
+    exec("stty -icanon min 1 time 1")
+    exec("stty iutf8")
+    exec("stty -echo")
+    tui.clear()
+
+    while running do
+        tui.clear()
+        tui.drawTextArea(editorTextArea.x, editorTextArea.y, editorTextArea.w, editorTextArea.h, editorTextArea.lines, editorTextArea.cursor_x, editorTextArea.cursor_y)
+
+        editorPanel.line = editorTextArea.cursor_y
+        editorPanel.column = editorTextArea.cursor_x
+
+        # Передаємо РІВНО шість аргументів
+        drawEditorPanel(editorPanel.x, editorPanel.y, editorPanel.filename, editorPanel.line, editorPanel.column, editor_mode)
+
+        let string key = tui.readKey()
+        
+        if editor_mode == "edit" do
+            if key == KEYS.KEY_ESC do
+                editor_mode = "standart"  # Спочатку виходимо з режиму
+            else
+                tui.handleTextAreaKey(editorTextArea, key) # Інші клавіші обробляємо
+            end
+        end
+        
+        # --- РЕЖИМ НАВІГАЦІЇ (STANDART) ---
+        if editor_mode == "standart" do
+            if key == "e" or key == "i" do
+                editor_mode = "edit"
+            end
+            if key == "q" do
+                running = false
+                tui.clear()
+            end
+            
+            # Дозволяємо рух стрілками в режимі standart
+            if key == KEYS.KEY_UP or key == KEYS.KEY_DOWN or key == KEYS.KEY_LEFT or key == KEYS.KEY_RIGHT do
+                tui.handleTextAreaKey(editorTextArea, key)
+            end
+            if key == "s" do
+                let string text_to_save = join_lines(editorTextArea.lines)
+                write_file(filename, text_to_save)
+                # (Тут можна показати повідомлення "Saved!")
+            end
+        end
+    end
+
+
+    tui.clear()
+end
+
+return initEditor
+
