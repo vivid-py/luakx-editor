@@ -1,3 +1,4 @@
+#main.luak
 import codes from "libs/tui/codes"
 import tui from "libs/tui/tui"
 import KEYS from "libs/tui/keys"

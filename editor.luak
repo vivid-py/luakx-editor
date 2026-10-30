@@ -5,41 +5,136 @@ import KEYS from "libs/tui/keys"
 
 #layout manager
 let computeLayout(int screen_w, int screen_h) do
-    let int gutter_w = 5             # 3 цифри + 1 пробіл + 1 лінія
-    let int tree_ratio = 20          # 25% для дерева
+    let int gutter_w = 5
+    let int tree_ratio = 20
     let int tree_w = (screen_w * tree_ratio) // 100
     
     return {
-        tree: {
-            x: 0,
-            y: 1,
-            w: tree_w - 2,
-            h: screen_h - 3
-        },
-        gutter: {
-            x: tree_w,
-            y: 2,
-            nums_w: 4                 # скільки символів під номер
-        },
-        editor: {
-            x: tree_w + gutter_w,
-            y: 1,
-            w: screen_w - tree_w - gutter_w - 2,
-            h: screen_h - 3
-        }
+        tree: { x: 0, y: 1, w: tree_w - 2, h: screen_h - 3 },
+        gutter: { x: tree_w, y: 2, nums_w: 4 },
+        editor: { x: tree_w + gutter_w, y: 1, w: screen_w - tree_w - gutter_w - 2, h: screen_h - 3 }
     }
 end
-
 let any screen = tui.getScreenSize()
 let any layout = computeLayout(screen.width, screen.height)
 
-let int tree_w   = (screen.width * 25) // 100
-let int editor_w = screen.width - tree_w - 1 
-
 let any editorTextArea = {x: layout.editor.x, y: layout.editor.y, w: layout.editor.w, h: layout.editor.h, lines:[""], cursor_x:0, cursor_y:0, scroll_y:0}
-let any gutter = {x: layout.gutter.x, y: layout.gutter.y, nums:0}
+let any gutter = {x: layout.gutter.x, y: layout.gutter.y}
 let any editorPanel = {x:0, y: screen.height, filename: "none", line: 0, column: 0}
 let any fileTreePanel = {x: layout.tree.x, y: layout.tree.y, w: layout.tree.w, h: layout.tree.h, folders: [], files: [], cursor_y: 0, current_path: ""}
+
+# --- SYNTAX HIGHLIGHTING ---
+let highlight_line(string line) do
+    let [any] tokens = []
+    let int i = 0
+    let int len_line = len(line)
+    
+    while i < len_line do
+        let string ch = substring(line, i, i)
+        
+        # 1. Коментар
+        if ch == "#" do
+            push(tokens, {text: substring(line, i, len_line - 1), color: codes.textCodes.standard})
+            i = len_line
+            
+        # 2. Рядок у лапках
+        elseif ch == "\"" do
+            let int j = i + 1
+            while j < len_line do
+                if substring(line, j, j) == "\"" do
+                    j = j + 1
+                    break
+                end
+                j = j + 1
+            end
+            push(tokens, {text: substring(line, i, j - 1), color: codes.textCodes.green})
+            i = j
+            
+        # 3. Число
+        elseif ch >= "0" and ch <= "9" do
+            let int j = i
+            while j < len_line do
+                let string c2 = substring(line, j, j)
+                if c2 >= "0" and c2 <= "9" do
+                    j = j + 1
+                else
+                    break
+                end
+            end
+            push(tokens, {text: substring(line, i, j - 1), color: codes.textCodes.yellow})
+            i = j
+            
+        # 4. Слово (ключове або ідентифікатор)
+        elseif (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_" do
+            let int j = i
+            while j < len_line do
+                let string c2 = substring(line, j, j)
+                if (c2 >= "a" and c2 <= "z") or (c2 >= "A" and c2 <= "Z") or (c2 >= "0" and c2 <= "9") or c2 == "_" do
+                    j = j + 1
+                else
+                    break
+                end
+            end
+            let string word = substring(line, i, j - 1)
+            let string color = codes.textCodes.standard
+            
+            if word == "let" or word == "if" or word == "do" or word == "end" or word == "while" or word == "for" or word == "in" or word == "return" or word == "import" or word == "from" or word == "and" or word == "or" or word == "not" or word == "int" or word == "float" or word == "string" or word == "bool" or word == "true" or word == "false" do
+                color = codes.textCodes.purple
+            end
+            
+            push(tokens, {text: word, color: color})
+            i = j
+            
+        # 5. Все інше (пробіли, дужки, оператори, UTF-8 байти)
+        else
+            push(tokens, {text: ch, color: codes.textCodes.standard})
+            i = i + 1
+        end
+    end
+    return tokens
+end
+
+# --- HIGHLIGHTED TEXT AREA (Реалізуємо прямо тут, бо luak не підтримує callback-и) ---
+let drawHighlightedTextArea(int x, int y, int w, int h, [string] lines, int cursor_x, int cursor_y, int scroll_y) do
+    tui.drawBox(x, y, w, h, codes.textCodes.standard)
+    let int i = 0
+    for line in lines do
+        if i >= scroll_y and i < scroll_y + h - 1 do
+            tui.clearLine(x + 2, y + 1 + (i - scroll_y), w - 2)
+            tui.moveCursor(x + 2, y + 1 + (i - scroll_y))
+            
+            let [any] tokens = highlight_line(line)
+            let int printed_w = 0
+            for token in tokens do
+                if printed_w >= w - 2 do
+                    break
+                end
+                let string color = token.color
+                let string text = token.text
+                let int text_vis_len = utf8_len(text)
+                
+                # Безпечне обрізання токену, якщо він не влазить в екран
+                if printed_w + text_vis_len > w - 2 do
+                    let int max_vis = w - 2 - printed_w
+                    text = utf8_sub(text, 0, max_vis - 1)
+                    text_vis_len = max_vis
+                end
+                
+                print(codes.genText(text, color))
+                printed_w = printed_w + text_vis_len
+            end
+        end
+        i = i + 1
+    end
+    
+    # Курсор
+    if cursor_y >= scroll_y and cursor_y < scroll_y + h - 1 do
+        if cursor_x <= w - 2 do
+            tui.moveCursor(x + 2 + cursor_x, y + 1 + (cursor_y - scroll_y))
+            print(codes.genMultiCodeText(" ", [codes.textCodes.inverted]))
+        end
+    end
+end
 
 #gutter
 let pad_left(string text, int width) do
@@ -52,33 +147,27 @@ let pad_left(string text, int width) do
     end
     return spaces .. text
 end
+
 let drawGutter(int x, int y, int h, int scroll_y, [string] lines, int cursor_y) do
     let int total_lines = len(lines)
-    
-    # Розрахунок ширини: мінімум 3 символи, але якщо рядків > 999, то 4
     let int width = 3
     if total_lines > 999 do width = 4 end
 
     let int i = 0
     while i < h - 1 do
         let int line_num = scroll_y + i + 1
-        
         if line_num <= total_lines do
             let string num_str = "" .. line_num
             let string padded = pad_left(num_str, width)
-            
             if line_num == cursor_y + 1 do
-                # Поточний рядок — білий і жирний (привертає увагу)
                 tui.printAt(codes.genMultiCodeText(padded, [codes.textCodes.white, codes.textCodes.bold]), x, y + i)
             else
-                # Інші рядки — звичайні (тьмяніші)
                 tui.printAt(codes.genText(padded, codes.textCodes.standard), x, y + i)
             end
         end
         i = i + 1
     end
 end
-
 
 #file tree functionality
 let getFilesFromDir(string directory) do
@@ -88,28 +177,29 @@ let getFilesFromDir(string directory) do
     let [string] all_files = split_lines(raw_out)
     for file in all_files do
         if file != "" do
-            if "/" in file do
+            # ФІКС: luak не підтримує `in` для рядків. 
+            # ls -1F додає "/" в кінці папок, тому просто перевіряємо останній символ.
+            let int flen = len(file)
+            let string last_char = substring(file, flen - 1, flen - 1)
+            if last_char == "/" do
                 push(dirs, file)
             else
                 push(files, file)
             end
         end
     end
-    return {
-        files: files,
-        folders: dirs
-    }
+    return { files: files, folders: dirs }
 end 
+
 let reloadFileTree(string path) do
     let string target = path
-    if target == "" do
-        target = "."
-    end
+    if target == "" do target = "." end
     let any dirdata = getFilesFromDir(target)
     fileTreePanel.folders = dirdata.folders
     fileTreePanel.files = dirdata.files
     fileTreePanel.cursor_y = 0
 end
+
 let drawFileTreePanel(int x, int y, int w, int h, [string] files, [string] folders, int cursor_y) do
     tui.drawBox(x, y, w, h, codes.textCodes.bold)
     let int i = 0
@@ -132,6 +222,7 @@ let drawFileTreePanel(int x, int y, int w, int h, [string] files, [string] folde
         i = i + 1
     end
 end
+
 #editor panel
 let drawEditorPanel(int x, int y, string filename, int line, int column, string mode, string focus) do
     tui.moveCursor(x, y)
@@ -142,9 +233,9 @@ let drawEditorPanel(int x, int y, string filename, int line, int column, string 
     let string shit = "mode: " .. mode .. "     focus: " .. focus .. "     " .. filename .. "     position(" .. line .. ", " .. column .. ")     "
     print(codes.genMultiCodeText(shit, [codes.textCodes.greenBg, codes.textCodes.black]))
 end
+
 #editor init
 let initEditor(string filename, [string] lines) do
-
     editorPanel.filename = filename
     editorTextArea.lines = lines
     
@@ -162,8 +253,6 @@ let initEditor(string filename, [string] lines) do
     fileTreePanel.current_path = pwd
     reloadFileTree(pwd)
 
-    gutter.nums = len(editorTextArea.lines) + 1
-
 
     exec("stty -icanon min 1 time 1")
     exec("stty iutf8")
@@ -171,10 +260,30 @@ let initEditor(string filename, [string] lines) do
     tui.clear()
 
     while running do
+        let any new_screen = tui.getScreenSize()
+        if new_screen.width != screen.width or new_screen.height != screen.height do
+            screen = new_screen
+            layout = computeLayout(screen.width, screen.height)
+            editorTextArea.x = layout.editor.x
+            editorTextArea.y = layout.editor.y
+            editorTextArea.w = layout.editor.w
+            editorTextArea.h = layout.editor.h
+            gutter.x = layout.gutter.x
+            gutter.y = layout.gutter.y
+            fileTreePanel.x = layout.tree.x
+            fileTreePanel.y = layout.tree.y
+            fileTreePanel.w = layout.tree.w
+            fileTreePanel.h = layout.tree.h
+            editorPanel.y = screen.height
+            reloadFileTree(fileTreePanel.current_path)
+        end
         tui.clear()
 
         drawFileTreePanel(fileTreePanel.x, fileTreePanel.y, fileTreePanel.w, fileTreePanel.h, fileTreePanel.files, fileTreePanel.folders, fileTreePanel.cursor_y)
-        tui.drawTextArea(editorTextArea.x, editorTextArea.y, editorTextArea.w, editorTextArea.h, editorTextArea.lines, editorTextArea.cursor_x, editorTextArea.cursor_y, editorTextArea.scroll_y)
+        
+        # ВИКОРИСТОВУЄМО НАШУ НОВУ ФУНКЦІЮ З ПІДСВІЧУВАННЯМ!
+        drawHighlightedTextArea(editorTextArea.x, editorTextArea.y, editorTextArea.w, editorTextArea.h, editorTextArea.lines, editorTextArea.cursor_x, editorTextArea.cursor_y, editorTextArea.scroll_y)
+        
         drawGutter(gutter.x, gutter.y, editorTextArea.h, editorTextArea.scroll_y, editorTextArea.lines, editorTextArea.cursor_y)
         editorPanel.line = editorTextArea.cursor_y
         editorPanel.column = editorTextArea.cursor_x
@@ -194,29 +303,17 @@ let initEditor(string filename, [string] lines) do
         
         # --- РЕЖИМ НАВІГАЦІЇ (STANDART) ---
         if editor_mode == "standart" do
-            
-            # Enter в редакторі — увійти в режим редагування
             if key == "e" or key == "i" do
-                if focus == "editor" do
-                    editor_mode = "edit"
-                end
+                if focus == "editor" do editor_mode = "edit" end
             end
             
-            # q — вийти
-            if key == "q" do
-                running = false
-            end
+            if key == "q" do running = false end
             
-            # Tab — перемикання фокусу
             if key == KEYS.KEY_TAB do
-                if focus == "editor" do
-                    focus = "filetree"
-                else
-                    focus = "editor"
-                end
+                if focus == "editor" do focus = "filetree"
+                else focus = "editor" end
             end
             
-            # Стрілки — тільки для тієї панелі, що у фокусі
             if focus == "editor" do
                 if key == KEYS.KEY_UP or key == KEYS.KEY_DOWN or key == KEYS.KEY_LEFT or key == KEYS.KEY_RIGHT do
                     tui.handleTextAreaKey(editorTextArea, key)
@@ -231,79 +328,58 @@ let initEditor(string filename, [string] lines) do
                 let int total_items = len(fileTreePanel.files) + len(fileTreePanel.folders)
                 if key == KEYS.KEY_UP do
                     fileTreePanel.cursor_y = fileTreePanel.cursor_y - 1
-                    if fileTreePanel.cursor_y < 0 do
-                        fileTreePanel.cursor_y = 0
-                    end
+                    if fileTreePanel.cursor_y < 0 do fileTreePanel.cursor_y = 0 end
                 end
                 if key == KEYS.KEY_DOWN do
                     fileTreePanel.cursor_y = fileTreePanel.cursor_y + 1
-                    if fileTreePanel.cursor_y >= total_items do
-                        fileTreePanel.cursor_y = total_items - 1
-                    end
+                    if fileTreePanel.cursor_y >= total_items do fileTreePanel.cursor_y = total_items - 1 end
                 end
                 
-                # Enter — відкрити обраний файл
-                                if key == KEYS.KEY_ENTER or key == "\r" do
+                # ФІКС: "\r" не парситься як escape в luak, використовуємо "\13"
+                if key == KEYS.KEY_ENTER or key == "\13" do
                     let int num_files = len(fileTreePanel.files)
                     
                     if fileTreePanel.cursor_y < num_files do
-                        # Це файл — формуємо ПОВНИЙ шлях
                         let string selected = fileTreePanel.files[fileTreePanel.cursor_y]
-                        
                         let string full_path = ""
-                        if fileTreePanel.current_path == "" do
-                            full_path = selected
-                        else
-                            full_path = fileTreePanel.current_path .. "/" .. selected
-                        end
+                        if fileTreePanel.current_path == "" do full_path = selected
+                        else full_path = fileTreePanel.current_path .. "/" .. selected end
 
-                        let string content = read_file(full_path) # <-- Читаємо за повним шляхом
+                        let string content = read_file(full_path)
                         if content != nil do
                             editorTextArea.lines = split_lines(content)
                             editorTextArea.cursor_x = 0
                             editorTextArea.cursor_y = 0
                             editorTextArea.scroll_y = 0
-                            
-                            # ЗБЕРІГАЄМО ПОВНИЙ ШЛЯХ для подальшого збереження
                             editorPanel.filename = full_path
                             filename = full_path
-                            
                             focus = "editor"
                         end
                     else
-                        # Це папка — заходимо всередину (твій існуючий код)
                         let int folder_idx = fileTreePanel.cursor_y - num_files
                         if folder_idx < len(fileTreePanel.folders) do
                             let string folder_name = fileTreePanel.folders[folder_idx]
                             let string clean_name = substring(folder_name, 0, len(folder_name) - 2)
                             let string new_path = ""
-                            if fileTreePanel.current_path == "" do
-                                new_path = clean_name
-                            else
-                                new_path = fileTreePanel.current_path .. "/" .. clean_name
-                            end
+                            if fileTreePanel.current_path == "" do new_path = clean_name
+                            else new_path = fileTreePanel.current_path .. "/" .. clean_name end
                             fileTreePanel.current_path = new_path
                             reloadFileTree(new_path)
                         end
                     end
                 end
+                
                 if key == "\127" or key == "\8" do
-                    # Знаходимо останній "/" у current_path
                     let int cp_len = len(fileTreePanel.current_path)
                     if cp_len > 0 do
                         let int last_slash = -1
                         let int i = 0
                         while i < cp_len do
-                            if substring(fileTreePanel.current_path, i, i) == "/" do
-                                last_slash = i
-                            end
+                            if substring(fileTreePanel.current_path, i, i) == "/" do last_slash = i end
                             i = i + 1
                         end
-                        
                         let string parent = ""
-                        if last_slash > 0 do
-                            parent = substring(fileTreePanel.current_path, 0, last_slash - 1)
-                        end
+                        if last_slash > 0 do parent = substring(fileTreePanel.current_path, 0, last_slash - 1) end
                         fileTreePanel.current_path = parent
                         reloadFileTree(parent)
                     end
@@ -311,7 +387,7 @@ let initEditor(string filename, [string] lines) do
             end
         end
 
-        # --- АВТОСКРОЛ (тільки коли фокус в редакторі) ---
+        # --- АВТОСКРОЛ ---
         if focus == "editor" do
             let int visible_lines = editorTextArea.h - 1
             if editorTextArea.cursor_y < editorTextArea.scroll_y do
@@ -323,6 +399,10 @@ let initEditor(string filename, [string] lines) do
         end
     end
 
+    # ПОВЕРТАЄМО ТЕРМІНАЛ В RAW РЕЖИМ ДЛЯ MAIN.LUAK!
+    exec("stty -icanon min 1 time 0")
+    exec("stty iutf8")
+    exec("stty -echo")
     tui.clear()
 end
 

@@ -1,3 +1,4 @@
+#tui.luak
 import codes from "libs/tui/codes"
 import KEYS from "libs/tui/keys"
 let clear() do
@@ -29,8 +30,8 @@ let readKey() do
 end
 
 let getScreenSize() do
-    let int height = exec_out("tput lines") + 0
-    let int width = exec_out("tput cols") + 0
+    let int height = to_number(exec_out("tput lines"))
+    let int width  = to_number(exec_out("tput cols"))
     return {height: height, width: width}
 end
 let clearLine(int x, int y, int width) do
@@ -190,29 +191,30 @@ end
 
 
 
-let drawTextArea(int x, int y, int w, int h, [string] lines, int cursor_x, int cursor_y, int scroll_y = 0) do
+let drawTextArea(int x, int y, int w, int h, [string] lines, int cursor_x, int cursor_y, int scroll_y = 0, any highlight_fn = nil) do
     drawBox(x, y, w, h, codes.textCodes.standard)
     let int i = 0
     for line in lines do
         if i >= scroll_y and i < scroll_y + h - 1 do
-            # ОБРІЗАЄМО текст, щоб він не залазив на рамку
-            let string visible_line = line
-            if utf8_len(line) > w - 2 do
-                visible_line = utf8_sub(line, 0, w - 3)
+            clearLine(x + 1, y + 1 + (i - scroll_y), w - 2)
+            moveCursor(x + 1, y + 1 + (i - scroll_y))
+            
+            if highlight_fn != nil do
+                let [any] tokens = highlight_fn(line)
+                for token in tokens do
+                    # Тут token.color — це вже готовий ANSI-код
+                    print(codes.genText(token.text, token.color))
+                end
+            else
+                print(line)
             end
-            # Затираємо старий текст і малюємо новий
-            clearLine(x + 2, y + 1 + (i - scroll_y), w - 2)
-            printAt(visible_line, x + 2, y + 1 + (i - scroll_y))
         end
         i = i + 1
     end
     
-    # Курсор (тільки якщо він в межах видимої області)
     if cursor_y >= scroll_y and cursor_y < scroll_y + h - 1 do
-        if cursor_x <= w - 2 do
-            moveCursor(x + 2 + cursor_x, y + 1 + (cursor_y - scroll_y))
-            print(codes.genMultiCodeText(" ", [codes.textCodes.inverted]))
-        end
+        moveCursor(x + 1 + cursor_x, y + 1 + (cursor_y - scroll_y))
+        print(codes.genMultiCodeText(" ", [codes.textCodes.inverted]))
     end
 end
 
