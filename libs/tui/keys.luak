@@ -5,6 +5,7 @@ let any KEYS = {
     KEY_RIGHT: "\27[C",
     KEY_LEFT: "\27[D",
     KEY_ENTER: "\n",
+    KEY_TAB: "\9",
     KEY_SPACE: " "
 }
 return KEYS

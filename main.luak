@@ -68,7 +68,7 @@ while running do
             
             let string edit_key = tui.readKey()
             
-            # ОСЬ ВОНА, МАГІЯ. Один рядок замість 40!
+            # ОСЬ ВОНА, МАГІЯ. Один рядок замість 40! beb
             editing = tui.handleInputKey(openFileTextModal, edit_key)
 
             
