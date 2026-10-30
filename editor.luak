@@ -2,15 +2,85 @@
 import codes from "libs/tui/codes"
 import tui from "libs/tui/tui"
 import KEYS from "libs/tui/keys"
+
+#layout manager
+let computeLayout(int screen_w, int screen_h) do
+    let int gutter_w = 5             # 3 цифри + 1 пробіл + 1 лінія
+    let int tree_ratio = 20          # 25% для дерева
+    let int tree_w = (screen_w * tree_ratio) // 100
+    
+    return {
+        tree: {
+            x: 0,
+            y: 1,
+            w: tree_w - 2,
+            h: screen_h - 3
+        },
+        gutter: {
+            x: tree_w,
+            y: 2,
+            nums_w: 4                 # скільки символів під номер
+        },
+        editor: {
+            x: tree_w + gutter_w,
+            y: 1,
+            w: screen_w - tree_w - gutter_w - 2,
+            h: screen_h - 3
+        }
+    }
+end
+
 let any screen = tui.getScreenSize()
+let any layout = computeLayout(screen.width, screen.height)
 
 let int tree_w   = (screen.width * 25) // 100
 let int editor_w = screen.width - tree_w - 1 
 
-let any editorTextArea = {x:tree_w + 2, y:1, w:editor_w - 2, h:screen.height - 3, lines:[""], cursor_x:0, cursor_y:0, scroll_y:0}
+let any editorTextArea = {x: layout.editor.x, y: layout.editor.y, w: layout.editor.w, h: layout.editor.h, lines:[""], cursor_x:0, cursor_y:0, scroll_y:0}
+let any gutter = {x: layout.gutter.x, y: layout.gutter.y, nums:0}
 let any editorPanel = {x:0, y: screen.height, filename: "none", line: 0, column: 0}
-let any fileTreePanel = {x: 0, y: 1, w: tree_w - 2, h:screen.height - 3, folders: [], files: [], cursor_y: 0, current_path: ""}
+let any fileTreePanel = {x: layout.tree.x, y: layout.tree.y, w: layout.tree.w, h: layout.tree.h, folders: [], files: [], cursor_y: 0, current_path: ""}
 
+#gutter
+let pad_left(string text, int width) do
+    let int spaces_needed = width - len(text)
+    let string spaces = ""
+    let int i = 0
+    while i < spaces_needed do
+        spaces = spaces .. " "
+        i = i + 1
+    end
+    return spaces .. text
+end
+let drawGutter(int x, int y, int h, int scroll_y, [string] lines, int cursor_y) do
+    let int total_lines = len(lines)
+    
+    # Розрахунок ширини: мінімум 3 символи, але якщо рядків > 999, то 4
+    let int width = 3
+    if total_lines > 999 do width = 4 end
+
+    let int i = 0
+    while i < h - 1 do
+        let int line_num = scroll_y + i + 1
+        
+        if line_num <= total_lines do
+            let string num_str = "" .. line_num
+            let string padded = pad_left(num_str, width)
+            
+            if line_num == cursor_y + 1 do
+                # Поточний рядок — білий і жирний (привертає увагу)
+                tui.printAt(codes.genMultiCodeText(padded, [codes.textCodes.white, codes.textCodes.bold]), x, y + i)
+            else
+                # Інші рядки — звичайні (тьмяніші)
+                tui.printAt(codes.genText(padded, codes.textCodes.standard), x, y + i)
+            end
+        end
+        i = i + 1
+    end
+end
+
+
+#file tree functionality
 let getFilesFromDir(string directory) do
     let [string] dirs = []
     let [string] files = []
@@ -30,7 +100,6 @@ let getFilesFromDir(string directory) do
         folders: dirs
     }
 end 
-
 let reloadFileTree(string path) do
     let string target = path
     if target == "" do
@@ -41,7 +110,6 @@ let reloadFileTree(string path) do
     fileTreePanel.files = dirdata.files
     fileTreePanel.cursor_y = 0
 end
-
 let drawFileTreePanel(int x, int y, int w, int h, [string] files, [string] folders, int cursor_y) do
     tui.drawBox(x, y, w, h, codes.textCodes.bold)
     let int i = 0
@@ -64,7 +132,7 @@ let drawFileTreePanel(int x, int y, int w, int h, [string] files, [string] folde
         i = i + 1
     end
 end
-
+#editor panel
 let drawEditorPanel(int x, int y, string filename, int line, int column, string mode, string focus) do
     tui.moveCursor(x, y)
     for i in 1 .. screen.width do
@@ -74,7 +142,7 @@ let drawEditorPanel(int x, int y, string filename, int line, int column, string 
     let string shit = "mode: " .. mode .. "     focus: " .. focus .. "     " .. filename .. "     position(" .. line .. ", " .. column .. ")     "
     print(codes.genMultiCodeText(shit, [codes.textCodes.greenBg, codes.textCodes.black]))
 end
-
+#editor init
 let initEditor(string filename, [string] lines) do
 
     editorPanel.filename = filename
@@ -94,6 +162,8 @@ let initEditor(string filename, [string] lines) do
     fileTreePanel.current_path = pwd
     reloadFileTree(pwd)
 
+    gutter.nums = len(editorTextArea.lines) + 1
+
 
     exec("stty -icanon min 1 time 1")
     exec("stty iutf8")
@@ -105,7 +175,7 @@ let initEditor(string filename, [string] lines) do
 
         drawFileTreePanel(fileTreePanel.x, fileTreePanel.y, fileTreePanel.w, fileTreePanel.h, fileTreePanel.files, fileTreePanel.folders, fileTreePanel.cursor_y)
         tui.drawTextArea(editorTextArea.x, editorTextArea.y, editorTextArea.w, editorTextArea.h, editorTextArea.lines, editorTextArea.cursor_x, editorTextArea.cursor_y, editorTextArea.scroll_y)
-
+        drawGutter(gutter.x, gutter.y, editorTextArea.h, editorTextArea.scroll_y, editorTextArea.lines, editorTextArea.cursor_y)
         editorPanel.line = editorTextArea.cursor_y
         editorPanel.column = editorTextArea.cursor_x
 
